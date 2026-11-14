@@ -16,6 +16,7 @@
       <nav class="tabs" role="tablist" aria-label="Sections">
         <button role="tab" id="tab-guardian" aria-controls="panel-guardian" aria-selected="true">Guardian</button>
         <button role="tab" id="tab-eval" aria-controls="panel-eval" aria-selected="false" tabindex="-1">Evaluations</button>
+        <button role="tab" id="tab-runs" aria-controls="panel-runs" aria-selected="false" tabindex="-1">Runs</button>
         <button role="tab" id="tab-about" aria-controls="panel-about" aria-selected="false" tabindex="-1">Constitution</button>
       </nav>
     </div>
@@ -141,6 +142,25 @@
           Seed items are smoke tests, not a validated benchmark. Do not publish rankings from them.
         </p>
       </div>
+    </section>
+
+    <!-- Runs -->
+    <section id="panel-runs" role="tabpanel" aria-labelledby="tab-runs" hidden>
+      <div class="toolbar">
+        <p class="hint" id="runs-status">Every evaluation is saved here with its settings, provenance and item-level results.</p>
+        <div class="toolbar-actions">
+          <button type="button" class="secondary" id="runs-refresh">Refresh</button>
+          <button type="button" class="secondary" id="runs-compare" disabled>Compare two runs</button>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table id="runs-table" hidden>
+          <thead><tr><th><span class="visually-hidden">Select</span></th><th>Started (UTC)</th><th>Task</th><th>Model</th><th>Guardian</th><th>Items</th><th>Results</th><th>Status</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p id="runs-empty" class="empty" hidden>No saved runs yet. Run a task in the Evaluations tab, or use the eve-run command.</p>
+      <div id="run-view" aria-live="polite"></div>
     </section>
 
     <!-- Constitution -->

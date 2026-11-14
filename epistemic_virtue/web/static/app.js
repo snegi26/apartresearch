@@ -237,24 +237,28 @@ function tile(name, value, baseline, direction) {
   return node;
 }
 
-function renderSummary(summary, directions) {
-  const tiles = $("eval-metrics");
-  tiles.replaceChildren();
+function summaryTiles(summary, directions) {
+  const tiles = [];
   for (const [name, stats] of Object.entries(summary.metrics)) {
-    tiles.append(tile(name, stats.mean, summary.baseline?.metrics[name].mean, directions[name]));
+    tiles.push(tile(name, stats.mean, summary.baseline?.metrics[name].mean, directions[name]));
   }
   if (summary.pair_consistency) {
     const pc = summary.pair_consistency;
     const base = summary.baseline ? summary.baseline.pair_consistency?.rate : undefined;
-    tiles.append(tile(`pair_consistency (${pc.consistent}/${pc.pairs})`, pc.rate, base, "higher"));
+    tiles.push(tile(`pair_consistency (${pc.consistent}/${pc.pairs})`, pc.rate, base, "higher"));
   }
   if (summary.guardian) {
     const g = summary.guardian;
-    tiles.append(el("div", { class: "tile" },
+    tiles.push(el("div", { class: "tile" },
       el("div", { class: "name", text: "guardian" }),
       el("div", { class: "value", text: `${g.approved}/${summary.n}` }),
       el("div", { class: "delta", text: `approved · ${g.revised} revised · ${g.rejected} rejected · ${g.errors} errors` })));
   }
+  return tiles;
+}
+
+function renderSummary(summary, directions) {
+  $("eval-metrics").replaceChildren(...summaryTiles(summary, directions));
   const unscored = summary.unscored ? ` ${summary.unscored} could not be scored.` : "";
   $("eval-status").textContent = `Finished ${summary.n} items.${unscored}`;
 }
@@ -338,6 +342,8 @@ async function submitEval(event) {
       } else if (ev.type === "summary") {
         renderSummary(ev, directions);
         $("eval-caveat").hidden = false;
+      } else if (ev.type === "saved") {
+        $("eval-status").append(` Saved as run ${ev.run_id}; see the Runs tab.`);
       }
     });
   } catch (error) {
@@ -345,6 +351,221 @@ async function submitEval(event) {
   } finally {
     button.disabled = false;
   }
+}
+
+/* ------------------------------------------------------------------ runs */
+
+const selectedRuns = new Set();
+let runOrder = []; // run ids, newest first
+
+async function getJson(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(await errorMessage(response));
+  return response.json();
+}
+
+function runStatus(run) {
+  const kind = { completed: "pass", failed: "fail" }[run.status] ?? "neutral";
+  return el("span", { class: `badge ${kind}`, text: run.status.toUpperCase() });
+}
+
+function metricLine(summary) {
+  return Object.entries(summary.metrics).map(([name, stats]) => `${name} ${fmt(stats.mean)}`).join(" · ");
+}
+
+function syncRunSelection() {
+  $("runs-compare").disabled = selectedRuns.size !== 2;
+}
+
+function runRow(run) {
+  const config = run.config;
+  const checkbox = el("input", { type: "checkbox", "aria-label": `Select run ${run.run_id} for comparison` });
+  checkbox.checked = selectedRuns.has(run.run_id);
+  checkbox.addEventListener("change", () => {
+    if (checkbox.checked) selectedRuns.add(run.run_id); else selectedRuns.delete(run.run_id);
+    syncRunSelection();
+  });
+  return el("tr", {},
+    el("td", {}, checkbox),
+    el("td", {}, el("button", { class: "link", type: "button", text: run.started_at.replace("T", " ").slice(0, 19),
+      onclick: () => showRun(run.run_id) })),
+    el("td", {}, config.task, el("div", { class: "muted", text: `${config.dataset} items` })),
+    el("td", { class: "id", text: config.model }),
+    el("td", { class: "id", text: config.guardian_model ?? "–" }),
+    el("td", { class: "num", text: String(run.n_items) }),
+    el("td", { class: "wrap-ok", text: metricLine(run.summary) }),
+    el("td", {}, runStatus(run)));
+}
+
+async function loadRuns() {
+  const table = $("runs-table");
+  try {
+    const runs = await getJson("/api/runs");
+    runOrder = runs.map((run) => run.run_id);
+    const known = new Set(runOrder);
+    for (const id of [...selectedRuns]) if (!known.has(id)) selectedRuns.delete(id);
+    table.querySelector("tbody").replaceChildren(...runs.map(runRow));
+    table.hidden = runs.length === 0;
+    $("runs-empty").hidden = runs.length > 0;
+    $("runs-status").textContent = runs.length
+      ? `${runs.length} saved run${runs.length > 1 ? "s" : ""}. Tick two runs of the same task to compare them.`
+      : "Every evaluation is saved here with its settings, provenance and item-level results.";
+  } catch (error) {
+    $("runs-status").textContent = `Could not load runs: ${error.message}`;
+  }
+  syncRunSelection();
+}
+
+function facts(pairs) {
+  const list = el("dl", { class: "facts" });
+  for (const [term, value, mono] of pairs) {
+    if (value == null || value === "") continue;
+    list.append(el("dt", { text: term }), el("dd", {}, mono ? el("code", { text: String(value) }) : String(value)));
+  }
+  return list;
+}
+
+function usageText(usage) {
+  if (!usage) return null;
+  const tokens = usage.input_tokens == null ? "tokens not reported"
+    : `${usage.input_tokens} input and ${usage.output_tokens} output tokens`;
+  return `${usage.calls} calls, ${tokens}`;
+}
+
+function useSettings(config) {
+  $("eval-task").value = config.task;
+  $("eval-model").value = config.model;
+  $("eval-limit").value = config.limit ?? "";
+  $("eval-gate").checked = Boolean(config.guardian_model);
+  if (config.guardian_model) $("eval-guardian-model").value = config.guardian_model;
+  $("eval-max-revisions").value = config.max_revisions;
+  syncEvalForm();
+  $("eval-dataset").value = config.dataset;
+  syncEvalForm();
+  selectTab($("tab-eval"));
+  $("eval-status").textContent = "Settings loaded from a saved run. Press Run task to repeat it.";
+}
+
+async function deleteRun(runId) {
+  if (!window.confirm(`Delete run ${runId}? This removes its file and cannot be undone.`)) return;
+  const response = await fetch(`/api/runs/${runId}`, { method: "DELETE" });
+  if (!response.ok) {
+    $("runs-status").textContent = `Could not delete: ${await errorMessage(response)}`;
+    return;
+  }
+  $("run-view").replaceChildren();
+  await loadRuns();
+}
+
+async function showRun(runId) {
+  const view = $("run-view");
+  let run;
+  try {
+    run = await getJson(`/api/runs/${runId}`);
+  } catch (error) {
+    view.replaceChildren(el("p", { class: "hint warn", text: `Could not load run: ${error.message}` }));
+    return;
+  }
+  const config = run.config, prov = run.provenance;
+  const commit = prov.git_commit ? `${prov.git_commit.slice(0, 12)}${prov.git_dirty ? " (uncommitted changes)" : ""}` : null;
+
+  const table = el("table", {},
+    el("thead", {}, el("tr", {}, ...["Item", "Answer", "Score", "Guardian"].map((text) => el("th", { text })))),
+    el("tbody", {}, ...run.items.flatMap(itemRows)));
+
+  view.replaceChildren(
+    el("div", { class: "card" },
+      el("div", { class: "toolbar" },
+        el("h2", { text: `Run ${run.run_id}` }),
+        el("div", { class: "toolbar-actions" },
+          el("button", { class: "secondary", type: "button", text: "Use these settings", onclick: () => useSettings(config) }),
+          el("a", { class: "secondary", href: `/api/runs/${run.run_id}`, download: `${run.run_id}.json`, text: "Download JSON" }),
+          el("button", { class: "secondary danger", type: "button", text: "Delete", onclick: () => deleteRun(run.run_id) }))),
+      run.error ? el("p", { class: "hint warn", text: `${run.status}: ${run.error} Results cover only the ${run.items.length} items that finished.` }) : null,
+      facts([
+        ["Status", run.status],
+        ["Started", `${run.started_at} (${run.duration_seconds} s)`],
+        ["Task", `${config.task}, ${config.dataset} items${config.limit ? `, limit ${config.limit}` : ""}`],
+        ["Model", config.model, true],
+        ["Guardian", config.guardian_model ? `${config.guardian_model}, up to ${config.max_revisions} revisions` : "off"],
+        ["Model usage", usageText(run.usage.actor)],
+        ["Guardian usage", usageText(run.usage.guardian)],
+        ["Generation settings", prov.generation_settings],
+        ["Code commit", commit, true],
+        ["Versions", `package ${prov.package_version}, inspect-ai ${prov.inspect_ai_version}, Python ${prov.python_version}`],
+        ["Items SHA-256", prov.items_sha256, true],
+        ["System prompt SHA-256", prov.system_prompt_sha256, true],
+        ["Guardian prompt SHA-256", prov.guardian_prompt_sha256, true],
+      ])),
+    el("div", { class: "tiles" }, ...summaryTiles(run.summary, run.metric_directions)),
+    el("div", { class: "table-scroll" }, table));
+  view.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function deltaCell(metric) {
+  if (metric.delta == null) return el("td", { class: "num", text: "–" });
+  let cls = "num";
+  if (metric.delta !== 0 && metric.direction !== "neutral") {
+    cls += (metric.direction === "lower" ? metric.delta < 0 : metric.delta > 0) ? " better" : " worse";
+  }
+  return el("td", { class: cls, text: `${metric.delta > 0 ? "+" : ""}${metric.delta.toFixed(3)}` });
+}
+
+function runLabel(side) {
+  const config = side.config;
+  const guardian = config.guardian_model ? ` + guardian ${config.guardian_model}` : "";
+  return `${config.model}${guardian} (${config.dataset}, ${side.run_id.slice(0, 16)})`;
+}
+
+async function compareRuns() {
+  const view = $("run-view");
+  // A is the older run and B the newer, so "B − A" reads as the change over time.
+  const [b, a] = runOrder.filter((id) => selectedRuns.has(id));
+  let result;
+  try {
+    result = await getJson(`/api/runs/compare?a=${a}&b=${b}`);
+  } catch (error) {
+    view.replaceChildren(el("p", { class: "hint warn", text: `Cannot compare: ${error.message}` }));
+    return;
+  }
+
+  const notes = [];
+  if (!result.same_items) {
+    notes.push(`The runs did not use the same items: ${result.shared_items} shared, ${result.only_a} only in A, ` +
+      `${result.only_b} only in B. The averages below are over each run's own items, so treat the differences with care.`);
+  }
+  for (const side of [result.a, result.b]) {
+    if (side.status !== "completed") notes.push(`Run ${side.run_id} is ${side.status}, so its results are partial.`);
+  }
+
+  const metrics = el("table", {},
+    el("thead", {}, el("tr", {}, ...["Metric", "A", "B", "B − A"].map((text) => el("th", { text })))),
+    el("tbody", {}, ...Object.entries(result.metrics).map(([name, metric]) => el("tr", {},
+      el("td", { text: `${name} (${metric.direction === "neutral" ? "no better direction" : metric.direction + " is better"})` }),
+      el("td", { class: "num", text: fmt(metric.a) }),
+      el("td", { class: "num", text: fmt(metric.b) }),
+      deltaCell(metric)))));
+
+  const scoreText = (side) => Object.entries(side.metrics).map(([k, v]) => `${k} ${fmt(v)}`).join(" · ");
+  const differing = result.differing_items.length
+    ? el("table", {},
+        el("thead", {}, el("tr", {}, ...["Item", "A", "B"].map((text) => el("th", { text })))),
+        el("tbody", {}, ...result.differing_items.map((item) => el("tr", {},
+          el("td", { class: "id", text: item.id }),
+          el("td", {}, item.a.answer ?? "–", el("div", { class: "muted", text: scoreText(item.a) })),
+          el("td", {}, item.b.answer ?? "–", el("div", { class: "muted", text: scoreText(item.b) }))))))
+    : el("p", { class: "hint", text: "Every shared item scored the same in both runs." });
+
+  view.replaceChildren(
+    el("div", { class: "card" },
+      el("h2", { text: `Comparison: ${result.task}` }),
+      facts([["A", runLabel(result.a), true], ["B", runLabel(result.b), true]]),
+      ...notes.map((text) => el("p", { class: "hint warn", text }))),
+    el("div", { class: "table-scroll" }, metrics),
+    el("h2", { text: `Items scored differently (${result.differing_items.length} of ${result.shared_items} shared)` }),
+    el("div", { class: "table-scroll" }, differing),
+    el("p", { class: "hint", text: "Differences are raw, with no significance test. A single pair of runs cannot separate a real effect from run-to-run variation." }));
+  view.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 /* ------------------------------------------------------------------ init */
@@ -384,6 +605,9 @@ async function init() {
   for (const id of ["eval-task", "eval-dataset"]) $(id).addEventListener("change", syncEvalForm);
   $("eval-model").addEventListener("input", syncEvalForm);
   $("eval-gate").addEventListener("change", syncEvalForm);
+  $("runs-refresh").addEventListener("click", loadRuns);
+  $("runs-compare").addEventListener("click", compareRuns);
+  $("tab-runs").addEventListener("click", loadRuns);
   $("guardian-form").addEventListener("submit", submitGuardian);
   $("eval-form").addEventListener("submit", submitEval);
   syncMode();

@@ -23,6 +23,7 @@ dev = ["pytest>=8", "httpx>=0.27", "ruff>=0.5"]
 
 [project.scripts]
 eve-web = "epistemic_virtue.web.app:main"
+eve-run = "epistemic_virtue.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["epistemic_virtue*"]

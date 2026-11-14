@@ -45,6 +45,9 @@ environment, so put authentication in front of it before using `--host 0.0.0.0`.
   responses, scores and aggregate metrics. Tick the Guardian gate to route every response through
   the Guardian; the first draft and the final response are both scored, so one run shows the
   Guardian's effect on each metric.
+- **Runs tab.** Every evaluation is saved. Open a run for its settings, provenance and item-level
+  results, tick two runs of the same task to compare them, reload a run's settings to repeat it,
+  or download its record.
 - **Constitution tab.** The Guardian's system prompt and the approval rules.
 
 ## The Constitutional Guardian
@@ -132,6 +135,31 @@ and the curated facts have not been independently annotated. They raise the item
 not satisfy the annotation and robustness gates below. Uncertainty and claim precision have no
 generator, because their gold labels need human judgement.
 
+## Saved runs
+Every evaluation started from the console or from `eve-run` is written to `runs/<run-id>.json`
+(set `EVE_RUNS_DIR` to store them elsewhere; the directory is git-ignored). A record holds:
+
+- **Settings** that repeat the run: task, item set, limit, model, Guardian model, revision limit.
+- **Provenance:** git commit and whether the tree had uncommitted changes, package, Inspect and
+  Python versions, and SHA-256 hashes of the items used, the system prompt and the Guardian prompt.
+- **Usage:** calls per model, and input and output tokens where the provider reports them.
+- **Results:** the aggregate summary and every item's prompt, response, score and Guardian verdicts.
+
+A run that fails or is interrupted is still saved, marked `failed` or `interrupted`, with the items
+that finished. Its summary covers only those items.
+
+Run from the command line, optionally several times to see run-to-run variation:
+```bash
+eve-run --task calibration --dataset generated --model <provider/model-id>
+eve-run --task manipulation --model <provider/model-id> --guardian <provider/other-model-id> --repeat 3
+```
+
+Two runs are comparable when their `items_sha256` match; the comparison view warns when they do
+not. Compared differences are raw, with no significance test. Generation uses provider defaults
+(no fixed temperature or seed), so repeating a run with a real model will not give identical
+responses. Dollar cost is not recorded, because prices change; compute it from the token counts.
+The Guardian tab's one-off reviews are not saved.
+
 ## Transparent scoring
 - Calibration: Brier loss `(p-y)^2`; lower is better.
 - Uncertainty: status accuracy plus reported confidence. A future release should add proper
@@ -175,6 +203,8 @@ The tests need no network access or API keys.
 - `epistemic_virtue/guardian.py`: Guardian prompt, verdict validation and the Actor/Guardian loop.
 - `epistemic_virtue/models.py`, `demo.py`: model access via Inspect, and the offline demo models.
 - `epistemic_virtue/runner.py`: item-by-item task runner used by the console.
+- `epistemic_virtue/store.py`: saved run records, provenance and run comparison.
+- `epistemic_virtue/cli.py`: the `eve-run` command.
 - `epistemic_virtue/web/`: FastAPI app and the static front end.
 - `epistemic_virtue/generators/`: item generators for calibration and manipulation.
 - `data/`: seed items, Guardian scenarios and the demo Actor's script.

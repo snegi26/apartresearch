@@ -16,7 +16,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, StringConstraints
@@ -30,7 +30,14 @@ from epistemic_virtue.guardian import (
     guarded_generate,
     review,
 )
-from epistemic_virtue.models import DEMO_ACTOR, DEMO_GUARDIAN, MODEL_ID_PATTERN, get_client
+from epistemic_virtue.models import (
+    DEMO_ACTOR,
+    DEMO_GUARDIAN,
+    MODEL_ID_PATTERN,
+    Metered,
+    get_client,
+)
+from epistemic_virtue.store import RunNotFound, RunStore, compare, record_run
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +78,13 @@ class EvalRequest(BaseModel):
     dataset: runner.Dataset = "seed"
     limit: Annotated[int, Field(ge=1, le=1000)] | None = None
     max_revisions: Revisions = 2
+
+
+def _load_run(run_id: str) -> dict[str, Any]:
+    try:
+        return RunStore().load(run_id)
+    except RunNotFound as exc:
+        raise HTTPException(status_code=404, detail=f"No saved run {run_id!r}") from exc
 
 
 def _client(model_id: str):
@@ -151,16 +165,43 @@ def create_app() -> FastAPI:
         if request.dataset == "generated" and not runner.item_counts(request.task)["generated"]:
             detail = f"Task {request.task!r} has no generated items"
             raise HTTPException(status_code=400, detail=detail)
-        guardian = _client(request.guardian_model) if request.guardian_model else None
+        actor = Metered(_client(request.model))
+        guardian = Metered(_client(request.guardian_model)) if request.guardian_model else None
         events = runner.run_task(
             request.task,
-            _client(request.model),
+            actor,
             guardian,
             limit=request.limit,
             dataset=request.dataset,
             max_revisions=request.max_revisions,
         )
-        return _stream(events)
+        recorded = record_run(
+            events, store=RunStore(), config=request.model_dump(), actor=actor, guardian=guardian
+        )
+        return _stream(recorded)
+
+    @app.get("/api/runs")
+    def runs_list() -> list[dict[str, Any]]:
+        return RunStore().list()
+
+    @app.get("/api/runs/compare")
+    def runs_compare(a: str, b: str) -> dict[str, Any]:
+        try:
+            return compare(_load_run(a), _load_run(b))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/runs/{run_id}")
+    def runs_get(run_id: str) -> dict[str, Any]:
+        return _load_run(run_id)
+
+    @app.delete("/api/runs/{run_id}", status_code=204)
+    def runs_delete(run_id: str) -> Response:
+        try:
+            RunStore().delete(run_id)
+        except RunNotFound as exc:
+            raise HTTPException(status_code=404, detail=f"No saved run {run_id!r}") from exc
+        return Response(status_code=204)
 
     @app.get("/")
     def index() -> FileResponse:

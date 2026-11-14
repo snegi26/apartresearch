@@ -8,7 +8,7 @@ provider Inspect supports works and credentials stay in environment variables.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Literal, Protocol
 
 DEMO_ACTOR = "demo/actor"
@@ -30,6 +30,40 @@ class ModelClient(Protocol):
     async def complete(self, system: str, messages: list[Message]) -> str: ...
 
 
+@dataclass
+class Usage:
+    """Calls made to a model and, where the provider reports them, tokens used."""
+
+    calls: int = 0
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+
+    def to_dict(self) -> dict[str, int | None]:
+        return asdict(self)
+
+
+class Metered:
+    """Wrap a client to count its calls and tokens for a run record.
+
+    Token counts stay ``None`` for clients that do not report usage, such as
+    the offline demo models.
+    """
+
+    def __init__(self, client: ModelClient) -> None:
+        self._client = client
+        self.name = client.name
+        self.usage = Usage()
+
+    async def complete(self, system: str, messages: list[Message]) -> str:
+        text = await self._client.complete(system, messages)
+        self.usage.calls += 1
+        reported = getattr(self._client, "last_usage", None)
+        if reported:
+            self.usage.input_tokens = (self.usage.input_tokens or 0) + reported[0]
+            self.usage.output_tokens = (self.usage.output_tokens or 0) + reported[1]
+        return text
+
+
 class InspectModelClient:
     """Adapter over an Inspect model, e.g. ``anthropic/<model-id>``."""
 
@@ -39,6 +73,7 @@ class InspectModelClient:
 
         self._model = get_model(model)
         self.name = model or str(self._model)
+        self.last_usage: tuple[int, int] | None = None
 
     async def complete(self, system: str, messages: list[Message]) -> str:
         from inspect_ai.model import ChatMessageAssistant, ChatMessageSystem, ChatMessageUser
@@ -48,6 +83,8 @@ class InspectModelClient:
             cls = ChatMessageUser if message.role == "user" else ChatMessageAssistant
             chat.append(cls(content=message.content))
         output = await self._model.generate(chat)
+        usage = output.usage
+        self.last_usage = (usage.input_tokens, usage.output_tokens) if usage else None
         return output.completion
 
 

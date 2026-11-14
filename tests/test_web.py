@@ -51,8 +51,8 @@ def test_guarded_run_stream(client):
 def test_eval_stream_with_gate(client):
     body = {"task": "uncertainty", "guardian_model": "demo/guardian"}
     stream = events(client.post("/api/eval/run", json=body))
-    assert [e["type"] for e in stream] == ["start", "item", "item", "item", "summary"]
-    assert stream[-1]["baseline"] is not None
+    assert [e["type"] for e in stream] == ["start", "item", "item", "item", "summary", "saved"]
+    assert stream[-2]["baseline"] is not None
 
 
 def test_eval_generated_item_set(client):
@@ -61,7 +61,41 @@ def test_eval_generated_item_set(client):
     assert stream[0]["total"] == 8
     assert stream[1]["id"] == "man-gen-0001"
     # demo/actor has no script for generated items, so they are reported unscored.
-    assert stream[-1]["unscored"] == 8
+    assert stream[-2]["unscored"] == 8
+
+
+def test_runs_are_saved_listed_compared_and_deleted(client):
+    plain = events(client.post("/api/eval/run", json={"task": "uncertainty"}))[-1]["run_id"]
+    gated_body = {"task": "uncertainty", "guardian_model": "demo/guardian"}
+    gated = events(client.post("/api/eval/run", json=gated_body))[-1]["run_id"]
+
+    listed = client.get("/api/runs").json()
+    assert {run["run_id"] for run in listed} == {plain, gated}
+    assert all("items" not in run and run["n_items"] == 3 for run in listed)
+
+    record = client.get(f"/api/runs/{gated}").json()
+    assert record["status"] == "completed"
+    assert record["config"]["guardian_model"] == "demo/guardian"
+    assert record["usage"]["guardian"]["calls"] == 4  # three items, one of them revised
+    assert len(record["items"]) == 3
+
+    comparison = client.get("/api/runs/compare", params={"a": plain, "b": gated}).json()
+    assert comparison["same_items"] is True
+    assert comparison["metrics"]["status_accuracy"]["delta"] == pytest.approx(1 / 3)
+    assert [item["id"] for item in comparison["differing_items"]] == ["unc-002"]
+
+    assert client.delete(f"/api/runs/{plain}").status_code == 204
+    assert client.get(f"/api/runs/{plain}").status_code == 404
+    assert len(client.get("/api/runs").json()) == 1
+
+
+def test_run_errors(client):
+    assert client.get("/api/runs/not-a-run-id").status_code == 404
+    assert client.get("/api/runs/..%2F..%2Fpyproject").status_code == 404
+    assert client.delete("/api/runs/20260101T000000Z-calibration-abcdef").status_code == 404
+    one = events(client.post("/api/eval/run", json={"task": "uncertainty"}))[-1]["run_id"]
+    other = events(client.post("/api/eval/run", json={"task": "calibration"}))[-1]["run_id"]
+    assert client.get("/api/runs/compare", params={"a": one, "b": other}).status_code == 400
 
 
 def test_validation_errors(client):
