@@ -203,11 +203,23 @@ function applyPreset(preset) {
 
 const fmt = (value) => (value == null ? "–" : value.toFixed(3));
 let tasksByName = {};
+let demoActor = "";
 
 function syncEvalForm() {
   const task = tasksByName[$("eval-task").value];
   $("eval-gate-options").hidden = !$("eval-gate").checked;
-  if (task) $("eval-task-description").textContent = `${task.description} ${task.items} seed items.`;
+  if (!task) return;
+
+  const select = $("eval-dataset");
+  const hasGenerated = task.items.generated > 0;
+  for (const option of select.options) option.disabled = option.value !== "seed" && !hasGenerated;
+  if (!hasGenerated) select.value = "seed";
+
+  const generated = hasGenerated ? `${task.items.generated} generated items` : "no generated items";
+  $("eval-task-description").textContent =
+    `${task.description} ${task.items.seed} seed items, ${generated}.`;
+  $("eval-demo-warning").hidden =
+    select.value === "seed" || $("eval-model").value.trim() !== demoActor;
 }
 
 function tile(name, value, baseline, direction) {
@@ -299,6 +311,7 @@ async function submitEval(event) {
   const limit = $("eval-limit").value;
   const payload = {
     task: $("eval-task").value,
+    dataset: $("eval-dataset").value,
     model: $("eval-model").value.trim(),
     guardian_model: gated ? $("eval-guardian-model").value.trim() : null,
     limit: limit ? Number(limit) : null,
@@ -367,7 +380,9 @@ async function init() {
 
   document.querySelectorAll('input[name="mode"]').forEach((input) => input.addEventListener("change", syncMode));
   for (const id of ["actor-model", "guardian-model"]) $(id).addEventListener("input", syncSameModelWarning);
-  $("eval-task").addEventListener("change", syncEvalForm);
+  demoActor = config.demo.actor;
+  for (const id of ["eval-task", "eval-dataset"]) $(id).addEventListener("change", syncEvalForm);
+  $("eval-model").addEventListener("input", syncEvalForm);
   $("eval-gate").addEventListener("change", syncEvalForm);
   $("guardian-form").addEventListener("submit", submitGuardian);
   $("eval-form").addEventListener("submit", submitEval);

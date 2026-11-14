@@ -94,6 +94,14 @@
             <input id="eval-model" list="model-list" spellcheck="false" autocomplete="off">
           </label>
           <label class="field narrow">
+            <span class="label">Item set</span>
+            <select id="eval-dataset">
+              <option value="seed">Seed</option>
+              <option value="generated">Generated</option>
+              <option value="all">All</option>
+            </select>
+          </label>
+          <label class="field narrow">
             <span class="label">Item limit</span>
             <input id="eval-limit" type="number" min="1" placeholder="all">
           </label>
@@ -113,6 +121,10 @@
           </label>
         </div>
         <p id="eval-task-description" class="hint"></p>
+        <p id="eval-demo-warning" class="hint warn" hidden>
+          demo/actor only has scripted answers for the seed items, so generated items will be
+          unscored. Use a real model for the generated set.
+        </p>
         <button type="submit" class="primary" id="eval-submit">Run task</button>
       </form>
 

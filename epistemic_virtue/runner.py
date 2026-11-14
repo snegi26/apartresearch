@@ -28,9 +28,11 @@ from epistemic_virtue.scoring import (
 )
 
 DATA = Path(__file__).resolve().parent.parent / "data"
+GENERATED = DATA / "generated"
 JSON_ONLY = "Return only valid JSON. No markdown fences or prose outside the JSON object."
 
 Direction = Literal["lower", "higher", "neutral"]
+Dataset = Literal["seed", "generated", "all"]
 
 
 @dataclass(frozen=True)
@@ -43,7 +45,13 @@ class TaskSpec:
 
     @property
     def path(self) -> Path:
+        """Hand-written seed items."""
         return DATA / f"{self.name}.jsonl"
+
+    @property
+    def generated_path(self) -> Path:
+        """Items written by ``scripts/generate_data.py``; absent for some tasks."""
+        return GENERATED / f"{self.name}.jsonl"
 
 
 TASKS: dict[str, TaskSpec] = {
@@ -81,10 +89,35 @@ TASKS: dict[str, TaskSpec] = {
 }
 
 
-def load_items(task: str, limit: int | None = None) -> list[dict[str, Any]]:
-    lines = TASKS[task].path.read_text(encoding="utf-8").splitlines()
-    items = [json.loads(line) for line in lines if line.strip()]
+def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    return [json.loads(line) for line in lines if line.strip()]
+
+
+def load_items(
+    task: str, limit: int | None = None, dataset: Dataset = "seed"
+) -> list[dict[str, Any]]:
+    """Load a task's items: the seed set, the generated set, or both.
+
+    Raises ``ValueError`` if ``dataset`` is ``"generated"`` and the task has no
+    generated items.
+    """
+    spec = TASKS[task]
+    items: list[dict[str, Any]] = []
+    if dataset in ("seed", "all"):
+        items += _read_jsonl(spec.path)
+    if dataset in ("generated", "all") and spec.generated_path.exists():
+        items += _read_jsonl(spec.generated_path)
+    elif dataset == "generated":
+        raise ValueError(f"Task {task!r} has no generated items; run scripts/generate_data.py")
     return items[:limit] if limit else items
+
+
+def item_counts(task: str) -> dict[str, int]:
+    """Number of seed and generated items available for ``task``."""
+    spec = TASKS[task]
+    generated = len(_read_jsonl(spec.generated_path)) if spec.generated_path.exists() else 0
+    return {"seed": len(_read_jsonl(spec.path)), "generated": generated}
 
 
 def _score_dict(score: ItemScore) -> dict[str, Any]:
@@ -203,10 +236,11 @@ async def run_task(
     *,
     limit: int | None = None,
     max_revisions: int = 2,
+    dataset: Dataset = "seed",
 ) -> AsyncIterator[dict[str, Any]]:
     """Yield a ``start`` event, one ``item`` event per item, then a ``summary``."""
     spec = TASKS[task]
-    items = load_items(task, limit)
+    items = load_items(task, limit, dataset)
     yield {"type": "start", "task": task, "total": len(items), "metrics": spec.metrics}
 
     results = []

@@ -28,6 +28,7 @@ def test_config(client):
         "manipulation",
         "claim_precision",
     ]
+    assert config["tasks"][0]["items"] == {"seed": 3, "generated": 200}
     assert len(config["presets"]) == 5
     assert "Constitutional Guardian" in config["guardian_prompt"]
 
@@ -54,7 +55,18 @@ def test_eval_stream_with_gate(client):
     assert stream[-1]["baseline"] is not None
 
 
+def test_eval_generated_item_set(client):
+    body = {"task": "manipulation", "dataset": "generated", "limit": 8}
+    stream = events(client.post("/api/eval/run", json=body))
+    assert stream[0]["total"] == 8
+    assert stream[1]["id"] == "man-gen-0001"
+    # demo/actor has no script for generated items, so they are reported unscored.
+    assert stream[-1]["unscored"] == 8
+
+
 def test_validation_errors(client):
+    no_generated = {"task": "uncertainty", "dataset": "generated"}
+    assert client.post("/api/eval/run", json=no_generated).status_code == 400
     assert client.post("/api/eval/run", json={"task": "nope"}).status_code == 404
     assert client.post("/api/guardian/review", json={"intent": "", "draft": "x"}).status_code == 422
     bad_model = {"intent": "a", "draft": "b", "guardian_model": "demo/nope"}

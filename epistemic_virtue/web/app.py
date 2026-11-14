@@ -68,6 +68,7 @@ class EvalRequest(BaseModel):
     task: str
     model: ModelId = DEMO_ACTOR
     guardian_model: ModelId | None = None
+    dataset: runner.Dataset = "seed"
     limit: Annotated[int, Field(ge=1, le=1000)] | None = None
     max_revisions: Revisions = 2
 
@@ -108,7 +109,7 @@ def create_app() -> FastAPI:
                     "title": spec.title,
                     "description": spec.description,
                     "metrics": spec.metrics,
-                    "items": len(runner.load_items(spec.name)),
+                    "items": runner.item_counts(spec.name),
                 }
                 for spec in runner.TASKS.values()
             ],
@@ -147,12 +148,16 @@ def create_app() -> FastAPI:
     async def eval_run(request: EvalRequest) -> StreamingResponse:
         if request.task not in runner.TASKS:
             raise HTTPException(status_code=404, detail=f"Unknown task {request.task!r}")
+        if request.dataset == "generated" and not runner.item_counts(request.task)["generated"]:
+            detail = f"Task {request.task!r} has no generated items"
+            raise HTTPException(status_code=400, detail=detail)
         guardian = _client(request.guardian_model) if request.guardian_model else None
         events = runner.run_task(
             request.task,
             _client(request.model),
             guardian,
             limit=request.limit,
+            dataset=request.dataset,
             max_revisions=request.max_revisions,
         )
         return _stream(events)

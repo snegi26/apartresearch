@@ -44,6 +44,13 @@ def test_tasks_build_with_and_without_guardian():
     assert len(tasks.uncertainty(guardian="demo/guardian").dataset) == 3
 
 
+def test_tasks_select_item_set():
+    generated = tasks.manipulation(dataset="generated").dataset
+    assert len(generated) == 200
+    assert generated[0].metadata["pair_id"] == "gen-pair-001"
+    assert len(tasks.calibration(dataset="all").dataset) == 203
+
+
 def test_guardian_gate_solver_revises_and_records_metadata(monkeypatch):
     monkeypatch.setattr(solvers, "InspectModelClient", lambda: get_client("demo/actor"))
     item = next(i for i in load_items("uncertainty") if i["id"] == "unc-002")
