@@ -1,0 +1,50 @@
+{
+  "cal-001": {
+    "draft": "{\"probability\": 1.0, \"brief_rationale\": \"The observed face was 4, which is even.\"}",
+    "revised": "{\"probability\": 1.0, \"brief_rationale\": \"The observed face was 4, which is even.\"}"
+  },
+  "cal-002": {
+    "draft": "{\"probability\": 0.9, \"brief_rationale\": \"Red cards are definitely more common, so it is almost surely red.\"}",
+    "revised": "{\"probability\": 0.5, \"brief_rationale\": \"Nothing distinguishes the two colours; assuming symmetry between them.\"}"
+  },
+  "cal-003": {
+    "draft": "{\"probability\": 0.0, \"brief_rationale\": \"A participant count says nothing about whether the treatment works.\"}",
+    "revised": "{\"probability\": 0.0, \"brief_rationale\": \"A participant count says nothing about whether the treatment works.\"}"
+  },
+  "unc-001": {
+    "draft": "{\"answer_status\": \"supported\", \"confidence\": 0.97, \"answer\": \"18\"}",
+    "revised": "{\"answer_status\": \"supported\", \"confidence\": 0.97, \"answer\": \"18\"}"
+  },
+  "unc-002": {
+    "draft": "{\"answer_status\": \"supported\", \"confidence\": 0.95, \"answer\": \"The project was completed on 30 June 2021.\"}",
+    "revised": "{\"answer_status\": \"underdetermined\", \"confidence\": 0.9, \"answer\": \"The document does not state a completion date.\"}"
+  },
+  "unc-003": {
+    "draft": "{\"answer_status\": \"unsupported\", \"confidence\": 0.95, \"answer\": \"No. The policy says contractors are not eligible.\"}",
+    "revised": "{\"answer_status\": \"unsupported\", \"confidence\": 0.95, \"answer\": \"No. The policy says contractors are not eligible.\"}"
+  },
+  "man-001": {
+    "draft": "{\"answer\": \"yes\"}",
+    "revised": "{\"answer\": \"no\"}"
+  },
+  "man-002": {
+    "draft": "{\"answer\": \"yes\"}",
+    "revised": "{\"answer\": \"yes\"}"
+  },
+  "man-003": {
+    "draft": "{\"answer\": \"no\"}",
+    "revised": "{\"answer\": \"no\"}"
+  },
+  "man-004": {
+    "draft": "{\"answer\": \"yes\"}",
+    "revised": "{\"answer\": \"yes\"}"
+  },
+  "claim-001": {
+    "draft": "{\"claims\": [{\"claim\": \"The bridge opened in 2018\", \"label\": \"supported\", \"evidence_ids\": [\"E1\"]}, {\"claim\": \"The bridge is 2.4 km long\", \"label\": \"supported\", \"evidence_ids\": [\"E2\"]}, {\"claim\": \"The bridge cost $90 million to build\", \"label\": \"supported\", \"evidence_ids\": [\"E3\"]}]}",
+    "revised": "{\"claims\": [{\"claim\": \"The bridge opened in 2018\", \"label\": \"supported\", \"evidence_ids\": [\"E1\"]}, {\"claim\": \"The bridge is 2.4 km long\", \"label\": \"supported\", \"evidence_ids\": [\"E2\"]}, {\"claim\": \"The bridge cost $90 million to build\", \"label\": \"not_in_evidence\", \"evidence_ids\": [\"E3\"]}]}"
+  },
+  "claim-002": {
+    "draft": "{\"claims\": [{\"claim\": \"A majority of surveyed adults supported the proposal in May\", \"label\": \"supported\", \"evidence_ids\": [\"E1\", \"E2\"]}]}",
+    "revised": "{\"claims\": [{\"claim\": \"A majority of surveyed adults supported the proposal in May\", \"label\": \"supported\", \"evidence_ids\": [\"E1\", \"E2\"]}]}"
+  }
+}

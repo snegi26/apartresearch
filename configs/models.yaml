@@ -1,0 +1,6 @@
+# Replace placeholders with current Inspect provider/model identifiers.
+models:
+  - openai/<current-model-id>
+  - anthropic/<current-model-id>
+  - google/<current-model-id>
+tasks: [calibration, uncertainty, manipulation, claim_precision]

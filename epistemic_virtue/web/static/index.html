@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Epistemic Virtue Eval</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="masthead">
+    <div class="wrap masthead-row">
+      <div>
+        <p class="eyebrow">Epistemic Virtue Eval · v0.2</p>
+        <h1>Constitutional Guardian console</h1>
+      </div>
+      <nav class="tabs" role="tablist" aria-label="Sections">
+        <button role="tab" id="tab-guardian" aria-controls="panel-guardian" aria-selected="true">Guardian</button>
+        <button role="tab" id="tab-eval" aria-controls="panel-eval" aria-selected="false" tabindex="-1">Evaluations</button>
+        <button role="tab" id="tab-about" aria-controls="panel-about" aria-selected="false" tabindex="-1">Constitution</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <p id="demo-note" class="notice" hidden></p>
+
+    <!-- Guardian -->
+    <section id="panel-guardian" role="tabpanel" aria-labelledby="tab-guardian" class="split">
+      <form id="guardian-form" class="card form">
+        <fieldset class="segmented" aria-label="Mode">
+          <label><input type="radio" name="mode" value="run" checked><span>Draft with an Actor</span></label>
+          <label><input type="radio" name="mode" value="review"><span>Review my draft</span></label>
+        </fieldset>
+
+        <div class="field">
+          <span class="label">Try a scenario</span>
+          <div id="presets" class="chips"></div>
+        </div>
+
+        <label class="field">
+          <span class="label">User intent</span>
+          <textarea id="intent" rows="3" required placeholder="The original request"></textarea>
+        </label>
+        <label class="field">
+          <span class="label">Retrieved context</span>
+          <textarea id="context" rows="5" placeholder="Facts or domain rules the answer must be grounded in"></textarea>
+        </label>
+        <label class="field" id="draft-field" hidden>
+          <span class="label">Draft response</span>
+          <textarea id="draft" rows="5" placeholder="The proposed answer to evaluate"></textarea>
+        </label>
+
+        <div class="row">
+          <label class="field" id="actor-field">
+            <span class="label">Actor model</span>
+            <input id="actor-model" list="model-list" spellcheck="false" autocomplete="off">
+          </label>
+          <label class="field">
+            <span class="label">Guardian model</span>
+            <input id="guardian-model" list="model-list" spellcheck="false" autocomplete="off">
+          </label>
+          <label class="field narrow" id="revisions-field">
+            <span class="label">Max revisions</span>
+            <input id="max-revisions" type="number" min="0" max="5" value="2">
+          </label>
+        </div>
+        <p id="same-model-warning" class="hint warn" hidden>
+          Actor and Guardian are the same model. An independent Guardian is a stronger check.
+        </p>
+
+        <button type="submit" class="primary" id="guardian-submit">Run</button>
+      </form>
+
+      <div class="proceedings" aria-live="polite">
+        <div id="guardian-outcome" class="outcome" hidden></div>
+        <ol id="timeline" class="timeline"></ol>
+        <p id="guardian-empty" class="empty">
+          Pick a scenario or enter a request, then run it. Each draft and the Guardian's verdict
+          on it will appear here.
+        </p>
+      </div>
+    </section>
+
+    <!-- Evaluations -->
+    <section id="panel-eval" role="tabpanel" aria-labelledby="tab-eval" hidden>
+      <form id="eval-form" class="card form">
+        <div class="row">
+          <label class="field">
+            <span class="label">Task</span>
+            <select id="eval-task"></select>
+          </label>
+          <label class="field">
+            <span class="label">Model under evaluation</span>
+            <input id="eval-model" list="model-list" spellcheck="false" autocomplete="off">
+          </label>
+          <label class="field narrow">
+            <span class="label">Item limit</span>
+            <input id="eval-limit" type="number" min="1" placeholder="all">
+          </label>
+        </div>
+        <label class="check">
+          <input type="checkbox" id="eval-gate">
+          <span>Route each response through the Guardian and score before and after</span>
+        </label>
+        <div class="row" id="eval-gate-options" hidden>
+          <label class="field">
+            <span class="label">Guardian model</span>
+            <input id="eval-guardian-model" list="model-list" spellcheck="false" autocomplete="off">
+          </label>
+          <label class="field narrow">
+            <span class="label">Max revisions</span>
+            <input id="eval-max-revisions" type="number" min="0" max="5" value="2">
+          </label>
+        </div>
+        <p id="eval-task-description" class="hint"></p>
+        <button type="submit" class="primary" id="eval-submit">Run task</button>
+      </form>
+
+      <div aria-live="polite">
+        <p id="eval-status" class="hint"></p>
+        <div id="eval-metrics" class="tiles"></div>
+        <div class="table-scroll">
+          <table id="eval-table" hidden>
+            <thead><tr><th>Item</th><th>Answer</th><th>Score</th><th>Guardian</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="hint" id="eval-caveat" hidden>
+          Seed items are smoke tests, not a validated benchmark. Do not publish rankings from them.
+        </p>
+      </div>
+    </section>
+
+    <!-- Constitution -->
+    <section id="panel-about" role="tabpanel" aria-labelledby="tab-about" hidden>
+      <div class="card prose">
+        <h2>How a response is approved</h2>
+        <ol>
+          <li>The Actor drafts a response from the request and the retrieved context.</li>
+          <li>The Guardian checks the draft against four maxims and returns a JSON verdict.</li>
+          <li>On FAIL, the Actor revises using the Guardian's directives, up to the revision limit.</li>
+          <li>A draft is approved only on an explicit PASS. An unreadable verdict is never a PASS.</li>
+        </ol>
+        <h2>Guardian system prompt</h2>
+        <pre id="guardian-prompt"></pre>
+      </div>
+    </section>
+  </main>
+
+  <datalist id="model-list"></datalist>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
